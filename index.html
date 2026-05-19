@@ -4,8 +4,24 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="data:application/json;charset=utf-8,{
+  %22name%22: %22High Performance%22,
+  %22short_name%22: %22HighPerf%22,
+  %22description%22: %22Forje sua melhor vers%C3%A3o%22,
+  %22start_url%22: %22.%22,
+  %22display%22: %22standalone%22,
+  %22background_color%22: %220a0a08%22,
+  %22theme_color%22: %22c9a84c%22,
+  %22orientation%22: %22portrait%22,
+  %22icons%22: [
+    {%22src%22:%22data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%230a0a08'/%3E%3Crect x='20' y='20' width='472' height='472' rx='80' fill='%231a1a17'/%3E%3Ctext x='256' y='320' text-anchor='middle' font-family='Arial Black' font-weight='900' font-size='260' fill='%23c9a84c'%3EH%3C/text%3E%3Crect x='60' y='380' width='392' height='12' rx='6' fill='%23e85c1a'/%3E%3C/svg%3E%22,%22sizes%22:%22512x512%22,%22type%22:%22image/svg+xml%22,%22purpose%22:%22any maskable%22}
+  ]
+}">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="High Performance">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='80' fill='%230a0a08'/%3E%3Crect x='20' y='20' width='472' height='472' rx='70' fill='%231a1a17'/%3E%3Ctext x='256' y='320' text-anchor='middle' font-family='Arial Black' font-weight='900' font-size='260' fill='%23c9a84c'%3EH%3C/text%3E%3Crect x='60' y='380' width='392' height='12' rx='6' fill='%23e85c1a'/%3E%3C/svg%3E">
+
 <meta name="theme-color" content="#0a0a08">
 <title>HIGH PERFORMANCE</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -478,6 +494,16 @@ body::before{content:'';position:fixed;inset:0;background-image:url("data:image/
 .auth-sync-dot{width:6px;height:6px;border-radius:50%;background:var(--green);}
 @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
 .auth-sync-dot.syncing{animation:pulse 1s ease infinite;}
+
+/* ── INSTALL BANNER ── */
+.install-banner{position:fixed;bottom:calc(var(--bot) + var(--safe) + .5rem);left:1rem;right:1rem;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:.9rem 1rem;display:flex;align-items:center;gap:.75rem;z-index:500;box-shadow:0 4px 24px rgba(0,0,0,.5);transform:translateY(120px);opacity:0;transition:transform .35s,opacity .35s;}
+.install-banner.show{transform:translateY(0);opacity:1;}
+.install-banner-ico{font-size:1.6rem;flex-shrink:0;}
+.install-banner-txt{flex:1;min-width:0;}
+.install-banner-title{font-family:var(--fc);font-size:.82rem;font-weight:700;letter-spacing:.08em;color:var(--text);text-transform:uppercase;}
+.install-banner-sub{font-size:.72rem;color:var(--text2);font-weight:300;margin-top:.15rem;}
+.install-banner-btn{font-family:var(--fc);font-size:.72rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--bg);background:var(--gold);border:none;border-radius:2px;padding:.5rem .9rem;cursor:pointer;flex-shrink:0;min-height:36px;}
+.install-banner-x{background:none;border:none;color:var(--text3);font-size:1rem;cursor:pointer;padding:4px;flex-shrink:0;}
 </style>
 <!-- Firebase SDKs -->
 <script type="module">
@@ -1150,6 +1176,14 @@ function init(){
     document.getElementById('word-ct').textContent=w+' palavra'+(w!==1?'s':'');
   });
   document.getElementById('modal').addEventListener('click',function(e){if(e.target===this)closeModal();});
+  // Restore last active tab
+  try{
+    var lastTab = sessionStorage.getItem('hp_tab');
+    if(lastTab && document.getElementById('view-'+lastTab)) {
+      go(lastTab);
+    }
+  }catch(e){}
+
   // Auth enter key
   ['login-email','login-pass'].forEach(function(id){
     var el=document.getElementById(id);
@@ -1342,33 +1376,90 @@ function pomTick(){
   if(pomSecondsLeft<=0){ pomComplete(); }
 }
 
+/* ── ALARM SOUND (Web Audio API — works on mobile) ── */
+function playAlarm(isFocus) {
+  try {
+    var ctx = new (window.AudioContext || window.webkitAudioContext)();
+    var t = ctx.currentTime;
+    if(isFocus) {
+      // 3 ascending beeps — "session done!"
+      [0, 0.35, 0.70].forEach(function(delay, i) {
+        var osc  = ctx.createOscillator();
+        var gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.value = 520 + (i * 120); // 520, 640, 760 Hz
+        osc.type = 'sine';
+        gain.gain.setValueAtTime(0, t + delay);
+        gain.gain.linearRampToValueAtTime(0.55, t + delay + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + delay + 0.38);
+        osc.start(t + delay);
+        osc.stop(t + delay + 0.4);
+      });
+    } else {
+      // 1 soft beep — "break over"
+      var osc  = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = 440;
+      osc.type = 'sine';
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.4, t + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
+      osc.start(t); osc.stop(t + 0.65);
+    }
+  } catch(e) {}
+  // vibration
+  try {
+    if(navigator.vibrate) {
+      navigator.vibrate(isFocus ? [200, 100, 200, 100, 400] : [300]);
+    }
+  } catch(e) {}
+}
+
 function pomComplete(){
   clearInterval(pomTimer); pomRunning=false;
   document.getElementById('pom-play').textContent='▶';
-  const cfg=POM_MODES[pomMode];
-  const task=document.getElementById('pom-task').value||'—';
-  const now=new Date();
-  const tm=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
-  pomSessions.push({type:pomMode,task,time:tm,xp:cfg.xp});
+  var cfg  = POM_MODES[pomMode];
+  var task = document.getElementById('pom-task').value || '—';
+  var now  = new Date();
+  var tm   = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+  pomSessions.push({type:pomMode, task:task, time:tm, xp:cfg.xp});
   savePom();
-  if(pomMode==='focus'){
+
+  var isFocus = pomMode === 'focus';
+
+  if(isFocus) {
     pomCompletedToday++;
     pomSessionCount++;
-    gainXP(cfg.xp,'Pomodoro');
+    gainXP(cfg.xp, 'Pomodoro');
     unlockAch('pom_1');
-    if(pomCompletedToday>=10)unlockAch('pom_10');
+    if(pomCompletedToday >= 10) unlockAch('pom_10');
     buildPomDots();
     updateStats();
   }
   renderPomHistory();
-  toast(pomMode==='focus'?'Sessão completa! +'+cfg.xp+' XP 🔥':'Pausa concluída. Bora trabalhar!');
-  // auto switch
-  if(pomMode==='focus'){
-    setPomMode(pomSessionCount%4===0?'long':'short');
+
+  // ALARM
+  playAlarm(isFocus);
+
+  // Toast
+  toast(isFocus ? 'Sessão completa! +' + cfg.xp + ' XP 🔥' : 'Pausa concluída. Bora trabalhar! ⚡');
+
+  // Browser notification (if permission granted)
+  if(window.Notification && Notification.permission === 'granted') {
+    new Notification(isFocus ? '⏱ Sessão de foco concluída!' : '💪 Pausa encerrada!', {
+      body: isFocus ? 'Você ganhou +' + cfg.xp + ' XP. Hora de respirar.' : 'Bora para mais 25 minutos de foco.',
+      icon: '',
+      silent: true
+    });
+  }
+
+  // Auto switch mode
+  if(isFocus) {
+    setPomMode(pomSessionCount % 4 === 0 ? 'long' : 'short');
   } else {
     setPomMode('focus');
   }
-  try{new Audio('data:audio/wav;base64,//uQRAAAAWMSLwUIYAAsYkXgoQwAEaYLWfkWgAI0wWs/ItAAAGDgYtAgAyN+QWaAAihwMWm4G8QQRDiMcCBcH3Cc+CDv/7xA4Tvh9Rz/y8QADBwMWgQAZG/ILNAARQ4GLTcDeIIIhxGOBAuD7hOfBB3/94gcJ3w+o5/5eIAIAAAVwWgQAVQ2ORaIQwEMAJiDg95G4nQL7mQVWI6GwRcfsZAcsKkJvxgxEjzFUgfHoSQ9Qq7KNwqHwuB13MA4a1q/DmBrHgPcmjiGoh//EwC5nGPEmS4RcfkVKOhJf+WOgoxJclFz3kgn//dBA+ya1GhurNn8zb//9NNutNuhz31f////9vt///z+IdAEAAAK4LQIAKobHItEIYCGAExBwe8jcToF9zIKrEdDYIuP2MgOWFSE34wYiR5iqQPj0JIeoVdlG4VD4XA67mAcNa1fhzA1jwHuTRxDUQ//iYBczjHiTJcIuPyKlHQkv/LHQUYkuSi57yQT//uggfZNajQ3Vmz+Zt//+mm3Wm3Q576v////+32///5/EOgAAADVghQAAAAA==');}catch(e){}
 }
 
 function pomReset(){
@@ -1604,6 +1695,7 @@ function go(v){
   const b=document.getElementById('bn-'+v);if(b)b.classList.add('active');
   if(v==='stats')buildStats();
   window.scrollTo(0,0);
+  try{ sessionStorage.setItem('hp_tab', v); }catch(e){}
 }
 
 /* ━━━ DAILY CHALLENGE ━━━ */
@@ -1908,8 +2000,99 @@ waitForFirebase(function() {
   });
 });
 
+
+/* ── PWA INSTALL ── */
+var deferredInstallPrompt = null;
+
+window.addEventListener('beforeinstallprompt', function(e) {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  // show install banner after 3 seconds if not dismissed
+  setTimeout(function() {
+    var dismissed = false;
+    try{ dismissed = localStorage.getItem('hp_install_dismissed'); }catch(ex){}
+    if(!dismissed) showInstallBanner();
+  }, 3000);
+});
+
+window.addEventListener('appinstalled', function() {
+  hideInstallBanner();
+  toast('App instalado com sucesso! ✓');
+  deferredInstallPrompt = null;
+});
+
+function showInstallBanner() {
+  var b = document.getElementById('install-banner');
+  if(b) b.classList.add('show');
+}
+function hideInstallBanner() {
+  var b = document.getElementById('install-banner');
+  if(b) b.classList.remove('show');
+}
+function triggerInstall() {
+  if(!deferredInstallPrompt) {
+    // iOS — show instructions
+    toast('No iOS: toque em Compartilhar → "Adicionar à Tela de Início"');
+    hideInstallBanner();
+    return;
+  }
+  deferredInstallPrompt.prompt();
+  deferredInstallPrompt.userChoice.then(function(r) {
+    if(r.outcome === 'accepted') toast('App instalado! 🔥');
+    deferredInstallPrompt = null;
+    hideInstallBanner();
+  });
+}
+function dismissInstall() {
+  hideInstallBanner();
+  try{ localStorage.setItem('hp_install_dismissed','1'); }catch(e){}
+}
+
+/* ── NOTIFICATION PERMISSION (for Pomodoro alarm) ── */
+function requestNotifPermission() {
+  if(window.Notification && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+}
+// request permission when user first starts a pomodoro
+var _origPomToggle = pomToggle;
+pomToggle = function() {
+  requestNotifPermission();
+  _origPomToggle();
+};
+
+/* ── iOS "Add to Home" hint (since iOS doesn't fire beforeinstallprompt) ── */
+(function() {
+  var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  var isStandalone = window.navigator.standalone;
+  if(isIOS && !isStandalone) {
+    var dismissed = false;
+    try{ dismissed = localStorage.getItem('hp_install_dismissed'); }catch(ex){}
+    if(!dismissed) {
+      setTimeout(function() {
+        var b = document.getElementById('install-banner');
+        if(b) {
+          document.querySelector('.install-banner-sub').textContent = 'Toque em Compartilhar ↑ → "Adicionar à Tela de Início"';
+          b.classList.add('show');
+        }
+      }, 3000);
+    }
+  }
+})();
+
 /* ── BOOT ── */
 init();
 </script>
+
+<!-- INSTALL BANNER -->
+<div class="install-banner" id="install-banner">
+  <div class="install-banner-ico">📲</div>
+  <div class="install-banner-txt">
+    <div class="install-banner-title">Adicionar à tela inicial</div>
+    <div class="install-banner-sub">Acesse como um app, sem precisar do navegador</div>
+  </div>
+  <button class="install-banner-btn" id="install-btn" onclick="triggerInstall()">Instalar</button>
+  <button class="install-banner-x" onclick="dismissInstall()">✕</button>
+</div>
 </body>
 </html>
